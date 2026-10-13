@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Timbang Food Log</title>
+<meta name="description" content="Personal calorie and macro tracker with Claude meal parsing.">
+<meta name="theme-color" content="#1d7448">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Timbang">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="wrap" id="loginView" hidden>
+  <form class="login" id="loginForm">
+    <h1>Timbang</h1>
+    <p>Sign in with your email. You'll get a link, and a 6-digit code if your email template includes one.</p>
+    <input type="email" id="loginEmail" placeholder="you@example.com" required autocomplete="email" aria-label="Email">
+    <button class="btn primary" type="submit" id="loginSend">Send sign-in email</button>
+    <div id="codeBox" hidden style="display:grid;gap:10px">
+      <input id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" aria-label="Code">
+      <button class="btn" type="button" id="loginVerify">Sign in with code</button>
+    </div>
+    <div class="status" id="loginStatus"></div>
+  </form>
+</div>
+
+<!-- APP -->
+<div class="wrap" id="appView" hidden>
+  <header class="top">
+    <div class="brand"><h1>Timbang</h1><span>food log</span></div>
+    <div class="hdr-r">
+      <div class="datenav">
+        <button id="prev" aria-label="Previous day">‹</button>
+        <input type="date" id="date" aria-label="Date">
+        <button id="next" aria-label="Next day">›</button>
+      </div>
+      <div class="bellwrap">
+        <button id="bell" class="bell" aria-label="Reminders" aria-expanded="false" aria-controls="bellPanel">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.9A1 1 0 0 0 5.3 17h13.4a1 1 0 0 0 .9-1.5L18 12.6V9a6 6 0 0 0-6-6Zm-2.4 15.5a2.5 2.5 0 0 0 4.8 0Z" fill="currentColor"/></svg>
+          <span class="badge num" id="badge" hidden>0</span>
+        </button>
+        <div class="bellpanel" id="bellPanel" hidden></div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="today" aria-selected="true">Today</button>
+    <button role="tab" data-tab="foods" aria-selected="false">My foods</button>
+    <button role="tab" data-tab="meals" aria-selected="false">Saved meals</button>
+    <button role="tab" data-tab="weight" aria-selected="false">Weight</button>
+    <button role="tab" data-tab="review" aria-selected="false">Weekly review</button>
+    <button role="tab" data-tab="targets" aria-selected="false">Targets</button>
+  </nav>
+  <div class="banner" id="banner" hidden></div>
+
+  <!-- TODAY -->
+  <section id="tab-today" class="grid today">
+    <div class="panel">
+      <div class="eyebrow">Log food</div>
+      <h2>What did you eat?</h2>
+      <div class="logbox">
+        <textarea id="txt" placeholder="e.g. 1 senduk nasi putih, ayam goreng peha, sayur kangkung, teh o ais kosong"></textarea>
+        <div class="row">
+          <select id="meal" aria-label="Meal">
+            <option value="breakfast">Breakfast</option><option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option><option value="snack">Snack</option>
+          </select>
+          <label class="btn photo-lbl"><input type="file" id="photo" accept="image/*" capture="environment">Photo</label>
+          <button class="btn" id="scanBtn" type="button">Barcode</button>
+          <img id="thumb" class="thumb" alt="Selected photo" hidden>
+          <button class="btn primary" id="analyse">Analyse</button>
+          <button class="btn ghost" id="stop" hidden>Stop</button>
+        </div>
+        <div class="scan" id="scanBox" hidden>
+          <video id="scanVideo" playsinline muted hidden></video>
+          <div class="row">
+            <input id="barcode" inputmode="numeric" placeholder="Type barcode" aria-label="Barcode number">
+            <button class="btn primary" id="barcodeGo" type="button">Look up</button>
+            <button class="btn ghost" id="scanClose" type="button">Close</button>
+          </div>
+          <div class="note" id="scanNote"></div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+      <div class="review" id="review"></div>
+      <div class="row" id="reviewActs" hidden style="margin-top:10px">
+        <button class="btn primary" id="logAll">Log these</button>
+        <button class="btn" id="saveMeal">Save as meal</button>
+        <button class="btn ghost" id="discard">Discard</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="eyebrow" id="dayLbl">Today</div>
+      <div class="sum">
+        <div class="ring">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sunk)" stroke-width="12"/>
+            <circle id="ringArc" cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" stroke-dasharray="0 314.16"/>
+          </svg>
+          <div class="c"><div class="big num" id="kcal">0</div><div class="sm" id="kcalSub">of 2000 kcal</div></div>
+        </div>
+        <div class="macros" id="macros"></div>
+      </div>
+      <div class="conf" id="conf"></div>
+      <div class="week" id="week" aria-label="This week, Monday to Sunday"></div>
+      <div id="meals"></div>
+    </div>
+  </section>
+
+  <!-- FOODS -->
+  <section id="tab-foods" class="grid" hidden>
+    <div class="panel">
+      <div class="eyebrow">Your nutrition database</div>
+      <h2>My foods</h2>
+      <p class="help">Values per 100 g. Foods marked checked are ones you confirmed against a label, MyFCD or USDA. Claude uses these values first when it reads your meals.</p>
+      <details id="addFoodBox">
+        <summary class="btn" style="display:inline-flex;align-items:center">Add food</summary>
+        <form class="form" id="foodForm">
+          <label class="f">Name<input id="ff-name" required maxlength="120" placeholder="Gardenia Original Classic"></label>
+          <div class="cols4">
+            <label class="f">kcal<input id="ff-kcal" type="number" step="0.1" min="0" required></label>
+            <label class="f">Protein g<input id="ff-p" type="number" step="0.1" min="0" required></label>
+            <label class="f">Carbs g<input id="ff-c" type="number" step="0.1" min="0" required></label>
+            <label class="f">Fat g<input id="ff-f" type="number" step="0.1" min="0" required></label>
+          </div>
+          <div class="cols2">
+            <label class="f">Usual portion name (optional)<input id="ff-unit" maxlength="40" placeholder="1 keping"></label>
+            <label class="f">Grams per portion<input id="ff-ug" type="number" step="1" min="0"></label>
+          </div>
+          <label class="checks"><span><input type="checkbox" id="ff-ver" checked> Checked against label or database</span></label>
+          <input type="hidden" id="ff-id">
+          <div class="row"><button class="btn primary" type="submit">Save food</button><span class="status" id="ffStatus"></span></div>
+        </form>
+      </details>
+      <input class="search" id="foodSearch" placeholder="Search my foods" aria-label="Search my foods">
+      <div class="list" id="foodList"></div>
+
+      <div class="usda">
+        <div class="eyebrow">USDA FoodData Central</div>
+        <p class="help">Lab values for plain ingredients (raw chicken, rice, fruit). Weak on Malaysian dishes. Results added here are saved as checked.</p>
+        <form class="row" id="usdaForm">
+          <input class="search" id="usdaQ" placeholder="e.g. chicken thigh roasted" aria-label="Search USDA" style="flex:1;margin-top:0">
+          <button class="btn primary" type="submit">Search</button>
+        </form>
+        <div class="status" id="usdaStatus"></div>
+        <div class="list" id="usdaList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEALS -->
+  <section id="tab-meals" class="grid" hidden>
+    <div class="panel">
+      <div class="eyebrow">One-tap re-logging</div>
+      <h2>Saved meals</h2>
+      <p class="help">Save a reviewed meal from the Today tab with “Save as meal”. Logging a saved meal adds every item to the selected day.</p>
+      <div class="list" id="mealList"></div>
+    </div>
+  </section>
+
+  <!-- WEIGHT -->
+  <section id="tab-weight" class="grid" hidden>
+    <div class="panel">
+      <div class="eyebrow">Body weight</div>
+      <h2>Weight</h2>
+      <p class="help">Weigh in the same way each time, ideally in the morning after the toilet. Daily weight swings 1–2 kg with water and salt, so judge progress by the 7-day average line, not single days.</p>
+      <form class="form" id="wForm" style="max-width:420px">
+        <div class="cols2">
+          <label class="f">Date<input id="w-date" type="date" required></label>
+          <label class="f">Weight kg<input id="w-kg" type="number" step="0.1" min="20" max="400" required></label>
+        </div>
+        <div class="row"><button class="btn primary" type="submit">Save weight</button><span class="status" id="wStatus"></span></div>
+      </form>
+      <div class="wstats" id="wStats"></div>
+      <div class="chartbox" id="wChart"></div>
+      <div class="list" id="wList"></div>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="tab-review" class="grid" hidden>
+    <div class="panel">
+      <div class="eyebrow" id="rvLbl">This week</div>
+      <h2>Weekly review</h2>
+      <p class="help">Claude reads the week you're viewing (Monday to Sunday) and summarises averages, where your calories come from, and how much of it was estimated.</p>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="rvGo">Review this week</button><button class="btn ghost" id="rvStop" hidden>Stop</button><span class="status" id="rvStatus"></span></div>
+      <div class="rvstats" id="rvStats"></div>
+      <div class="rvtext" id="rvText"></div>
+    </div>
+  </section>
+
+  <!-- TARGETS -->
+  <section id="tab-targets" class="grid" hidden>
+    <div class="panel">
+      <div class="eyebrow">Daily targets</div>
+      <h2>Targets</h2>
+      <form class="form" id="tgtForm" style="max-width:520px">
+        <div class="cols4">
+          <label class="f">kcal<input id="t-kcal" type="number" step="10" min="0"></label>
+          <label class="f">Protein g<input id="t-p" type="number" step="1" min="0"></label>
+          <label class="f">Carbs g<input id="t-c" type="number" step="1" min="0"></label>
+          <label class="f">Fat g<input id="t-f" type="number" step="1" min="0"></label>
+        </div>
+        <div class="row"><button class="btn primary" type="submit">Save targets</button><span class="status" id="tgtStatus"></span></div>
+      </form>
+      <p class="help" style="margin-top:16px">Each entry is marked <span class="dot d-hi"></span>checked when its values come from a food you confirmed in My foods, or <span class="dot d-md"></span>estimated when they are Claude's estimate or label data you haven't checked. Portions are always estimates unless you weighed them.</p>
+      <div class="acct"><span id="acctEmail"></span><button class="btn" id="signOut">Sign out</button></div>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
